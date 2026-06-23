@@ -124,6 +124,13 @@ export default function PaymentDashboard({
   const activeRemaining = activeCategory ? activeCategory.totalRemaining : 0;
   const activePercent = activeExpected > 0 ? (activePaid / activeExpected) * 100 : 0;
 
+  const isActiveCreditCard = activeCategory && (
+    activeCategory.title.toLowerCase().includes('บัตร') ||
+    activeCategory.title.toLowerCase().includes('เครดิต') ||
+    activeCategory.title.toLowerCase().includes('credit') ||
+    activeCategory.installments.length === 1
+  );
+
   // List of overdue installments across all categories for quick alerts
   const overdueAlertsList: { categoryTitle: string; item: InstallmentRow }[] = [];
   data.categories.forEach((cat) => {
@@ -525,9 +532,9 @@ export default function PaymentDashboard({
                   </div>
                 )}
                 <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl">
-                  <span className="text-slate-400">จำนวนงวดทั้งหมด</span>
+                  <span className="text-slate-400">{isActiveCreditCard ? 'รอบบิลสะสมทั้งหมด' : 'จำนวนงวดทั้งหมด'}</span>
                   <span className="text-slate-800 bg-white px-2 py-0.5 rounded-md border border-slate-200">
-                    {activeCategory.installments.length} งวด
+                    {activeCategory.installments.length} {isActiveCreditCard ? 'รอบบิล' : 'งวด'}
                   </span>
                 </div>
               </div>
@@ -536,7 +543,7 @@ export default function PaymentDashboard({
             {/* Active Category Financial Circle Progress */}
             <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-xs flex flex-col items-center justify-center text-center space-y-4">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider w-full text-left">
-                ความก้าวหน้า {activeCategory.title}
+                {isActiveCreditCard ? 'สถานะรอบบิลปัจจุบัน' : `ความก้าวหน้า ${activeCategory.title}`}
               </h3>
 
               {/* Progress Ring */}
@@ -567,7 +574,7 @@ export default function PaymentDashboard({
                   <span className="text-lg font-extrabold text-slate-800">
                     {activePercent.toFixed(0)}%
                   </span>
-                  <span className="text-[10px] text-slate-400 font-medium">จ่ายแล้ว</span>
+                  <span className="text-[10px] text-slate-400 font-medium">{isActiveCreditCard ? 'ชำระ/เคลียร์' : 'จ่ายแล้ว'}</span>
                 </div>
               </div>
 

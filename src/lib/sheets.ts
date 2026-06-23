@@ -108,11 +108,37 @@ export async function fetchSpreadsheetData(accessToken: string, spreadsheetId: s
       const valData = await valRes.json();
       const rows: string[][] = valData.values || [];
 
-      // Parse metadata from Row 1
+      // Parse metadata from Row 1 or scan the first few rows robustly for keywords
       let dueDateInfo = '';
       let ref1 = '';
       let ref2 = '';
-      if (rows.length > 0) {
+      let foundMetadata = false;
+
+      // Scan first 4 rows across all columns for Thai keywords indicating due date
+      for (let i = 0; i < Math.min(rows.length, 4); i++) {
+        const row = rows[i];
+        if (!row) continue;
+        for (let j = 0; j < row.length; j++) {
+          const cell = String(row[j] || '').trim();
+          if (
+            cell.includes('ทุกวันที่') || 
+            cell.includes('สิ้นเดือน') || 
+            cell.includes('กำหนดชำระ') || 
+            cell.includes('ดิวของ') ||
+            (cell.startsWith('วันที่') && !cell.includes('ชำระมา') && !cell.includes('คงเหลือ') && !cell.includes('รวม'))
+          ) {
+            dueDateInfo = cell;
+            ref1 = String(row[j + 1] || '').trim();
+            ref2 = String(row[j + 2] || '').trim();
+            foundMetadata = true;
+            break;
+          }
+        }
+        if (foundMetadata) break;
+      }
+
+      // Fallback to absolute index 2, 3, 4 of Row 1 if search fails
+      if (!foundMetadata && rows.length > 0) {
         const row1 = rows[0];
         dueDateInfo = row1[2] || '';
         ref1 = row1[3] || '';

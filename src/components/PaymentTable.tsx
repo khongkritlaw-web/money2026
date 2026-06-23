@@ -26,6 +26,11 @@ export default function PaymentTable({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PAID' | 'UNPAID' | 'OVERDUE'>('ALL');
 
+  const isCreditCard = category.title.toLowerCase().includes('บัตร') || 
+                       category.title.toLowerCase().includes('เครดิต') || 
+                       category.title.toLowerCase().includes('credit') ||
+                       category.installments.length === 1;
+
   // Input state for adding new installment
   const [showAddRowForm, setShowAddRowForm] = useState(false);
   const [newDueAmount, setNewDueAmount] = useState<string>('600');
@@ -151,7 +156,7 @@ export default function PaymentTable({
       {/* Visual usage guidance */}
       <p className="text-[11px] text-slate-500 bg-indigo-50/40 border border-indigo-100/60 px-3.5 py-2 rounded-xl flex items-center gap-1.5 font-medium shadow-2xs">
         <Sparkles className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
-        <span><b>คำแนะนำ:</b> สามารถกดที่กล่องติ๊กช่อง <b>"ติ๊กชำระ"</b> หน้าสุด หรือคลิกที่ <b>"แถวแนวราบใดๆ"</b> เพื่อเปิดแผงดูใบเสร็จและรายละเอียดบัญชีค่างวดได้ทันที</span>
+        <span><b>คำแนะนำ:</b> สามารถกดที่กล่องติ๊กช่อง <b>"ติ๊กชำระ"</b> หน้าสุด หรือคลิกที่ <b>"แถวแนวราบใดๆ"</b> เพื่อเปิดแผงดูใบเสร็จและรายละเอียด{isCreditCard ? 'รอบบิลบัตร' : 'บัญชีค่างวด'}ได้ทันที</span>
       </p>
 
       {/* Grid List View */}
@@ -161,9 +166,9 @@ export default function PaymentTable({
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-bold text-slate-400 tracking-wider">
                 <th className="py-3 px-3 w-12 text-center">ติ๊กชำระ</th>
-                <th className="py-3 px-4 w-16 text-center">งวดที่</th>
-                <th className="py-3 px-4">เดือนค่างวด</th>
-                <th className="py-3 px-4 text-right">ยอดค่างวด</th>
+                <th className="py-3 px-4 w-16 text-center">{isCreditCard ? 'รอบบิลที่' : 'งวดที่'}</th>
+                <th className="py-3 px-4">{isCreditCard ? 'รอบประจำเดือน' : 'เดือนค่างวด'}</th>
+                <th className="py-3 px-4 text-right">{isCreditCard ? 'ยอดรูดบัตร (บาท)' : 'ยอดค่างวด'}</th>
                 <th className="py-3 px-4 text-right">ชำระมาแล้ว</th>
                 <th className="py-3 px-4 text-right">คงเหลือ</th>
                 <th className="py-3 px-4 text-center">ใบเสร็จ</th>
@@ -192,7 +197,7 @@ export default function PaymentTable({
                       {item.status === 'PAID' ? (
                         <button
                           onClick={() => {
-                            if (window.confirm(`คุณต้องการยกเลิกประวัติชำระของ งวดที่ ${item.index} (เดือน ${item.month}) หรือไม่?`)) {
+                            if (window.confirm(`คุณต้องการยกเลิกประวัติชำระของ ${isCreditCard ? 'รอบบิลที่' : 'งวดที่'} ${item.index} (เดือน ${item.month}) หรือไม่?`)) {
                               onClearPayment(item);
                             }
                           }}

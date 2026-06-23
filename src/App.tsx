@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileSpreadsheet, Sparkles, ShieldCheck, HelpCircle,
-  TrendingDown, FileClock, Check, RefreshCw, AlertCircle, Settings2, Database, KeySquare, LogIn
+  TrendingDown, FileClock, Check, RefreshCw, AlertCircle, Settings2, Database, KeySquare, LogIn,
+  Lock, Delete
 } from 'lucide-react';
 import { SpreadsheetData, InstallmentRow } from './types';
 import { initAuth, googleSignIn, logout, getAccessToken } from './lib/firebase';
@@ -16,6 +17,61 @@ export default function App() {
   const [token, setToken] = useState<string | null>(null);
   const [needsAuth, setNeedsAuth] = useState<boolean>(true);
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+
+  // PIN Lock States
+  const [pin, setPin] = useState<string>('');
+  const [pinError, setPinError] = useState<string>('');
+  const [isPinUnlocked, setIsPinUnlocked] = useState<boolean>(() => {
+    return localStorage.getItem('pin_unlocked') === 'true';
+  });
+
+  const handlePinDigit = (digit: string) => {
+    setPinError('');
+    if (pin.length < 4) {
+      const nextPin = pin + digit;
+      setPin(nextPin);
+      if (nextPin.length === 4) {
+        processPin(nextPin);
+      }
+    }
+  };
+
+  const handlePinBackspace = () => {
+    setPinError('');
+    setPin(prev => prev.slice(0, -1));
+  };
+
+  const processPin = async (enteredPin: string) => {
+    if (enteredPin === '0000') {
+      localStorage.setItem('pin_unlocked', 'true');
+      setIsPinUnlocked(true);
+      showToast('ปลดล็อคหน้าจอสำเร็จ', 'success');
+      
+      // Auto trigger Google Auth if not yet authenticated
+      if (needsAuth) {
+        showToast('กำลังลงชื่อเข้าใช้งานสิทธิ์ Google Sheets...', 'info');
+        await handleLogin();
+      }
+    } else {
+      setPinError('รหัสผ่าน PIN ไม่ถูกต้อง！กรุณาระบุรหัสผ่านที่ถูกต้อง');
+      setPin('');
+      showToast('รหัสผ่าน PIN ไม่ถูกต้อง', 'error');
+    }
+  };
+
+  // Keyboard support for lock screen PIN entering
+  useEffect(() => {
+    if (isPinUnlocked) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key >= '0' && e.key <= '9') {
+        handlePinDigit(e.key);
+      } else if (e.key === 'Backspace') {
+        handlePinBackspace();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [pin, isPinUnlocked, needsAuth]);
 
   // Core Data State
   const [spreadsheetId, setSpreadsheetId] = useState<string>('1NN7hkA28PLynkE6jYWOi9mdBThaLT4aFupAOT1dTq-o');
@@ -100,13 +156,16 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    if (window.confirm('คุณต้องการออกจากระบบหรือไม่?')) {
+    if (window.confirm('คุณต้องการล็อคหน้าจอเพื่อความปลอดภัยใช่หรือไม่?')) {
       await logout();
       setUser(null);
       setToken(null);
       setSheetData(null);
       setNeedsAuth(true);
-      showToast('ออกจากระบบอย่างปลอดภัยแล้ว', 'info');
+      setIsPinUnlocked(false);
+      setPin('');
+      localStorage.removeItem('pin_unlocked');
+      showToast('ล็อคหน้าจอสำเร็จ สำรองพินคือ "0000"', 'info');
     }
   };
 
@@ -305,70 +364,116 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Container Layout */}
-      {needsAuth ? (
-        /* Login Page */
-        <div className="min-h-screen flex items-center justify-center p-4 bg-radial from-slate-100 to-slate-200">
+      {!isPinUnlocked ? (
+        /* LOCK SCREEN FOR SINGLE USER */
+        <div className="min-h-screen flex items-center justify-center p-4 bg-[#0F172A] text-white" id="pin-lock-container">
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ type: 'spring', duration: 0.6 }}
-            className="w-full max-w-md rounded-3xl bg-white border border-slate-100 shadow-2xl p-8 relative overflow-hidden"
-            id="login-page-card"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
+            className="w-full max-w-sm rounded-[2rem] bg-[#1E293B] border border-slate-800 shadow-2xl p-8 text-center relative overflow-hidden"
+            id="pin-lock-card"
           >
-            {/* Visual background details */}
-            <div className="absolute top-0 right-0 -mr-16 -mt-16 h-36 w-36 rounded-full bg-indigo-50/70 blur-xl" />
-            <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-36 w-36 rounded-full bg-rose-50/70 blur-xl" />
+            {/* Ambient gradients */}
+            <div className="absolute top-0 right-0 -mr-16 -mt-16 h-36 w-36 rounded-full bg-indigo-500/10 blur-xl" />
+            <div className="absolute bottom-0 left-0 -ml-16 -mb-16 h-36 w-36 rounded-full bg-rose-500/10 blur-xl" />
 
-            <div className="relative space-y-6 text-center">
-              {/* Product Icon */}
-              <div className="inline-flex rounded-2xl bg-indigo-600 p-4 text-white shadow-lg shadow-indigo-100">
-                <FileSpreadsheet className="h-8 w-8" />
+            <div className="relative space-y-7">
+              {/* Product Icon / Shield Lock */}
+              <div className="inline-flex rounded-2xl bg-indigo-600/30 border border-indigo-500/40 p-4 text-indigo-400 shadow-inner">
+                <Lock className="h-7 w-7" />
               </div>
 
-              {/* Title & Slogan */}
-              <div className="space-y-2">
-                <h2 className="text-xl font-bold text-slate-800 tracking-tight">
-                  ระบบติดตามค่าใช้จ่ายประจำเดือน
+              {/* Title & info description */}
+              <div className="space-y-1">
+                <h2 className="text-lg font-bold tracking-tight">
+                  ระบบบันทึกค่าใช้จ่ายส่วนบุคคล
                 </h2>
-                <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-                  บันทึกความก้าวหน้า ชำระเงินค่างวด และจัดเก็บหลักฐานใบเสร็จของคุณอย่างเป็นส่วนตัว ผ่านระบบเชื่อมต่อตรงไปยัง Google Sheets และ Google Drive สำรองข้อมูลปลอดภัย 100%
+                <p className="text-[11px] text-slate-400 max-w-xs mx-auto leading-relaxed">
+                  กรุณาใส่รหัสผ่าน 4 หลัก เพื่อปลดล็อคเข้าใช้งานระบบ (PIN: 0000)
                 </p>
               </div>
 
-              {/* Scope requirements disclaimer */}
-              <div className="rounded-xl bg-slate-50 border border-slate-150 p-4 text-[11px] text-slate-500 leading-relaxed space-y-1.5 text-left font-medium">
-                <div className="flex items-center gap-1.5 text-slate-800 font-bold">
-                  <ShieldCheck className="h-4 w-4 text-emerald-500" />
-                  <span>สิทธิ์การขอเข้าถึงความปลอดภัย</span>
-                </div>
-                <p>• อ่านและเขียนข้อมูลแผ่นงาน (Google Sheets) เพื่อซิงก์ข้อมูลค่าใช้จ่าย</p>
-                <p>• อัปโหลดข้อมูลรูปใบเสร็จเก็บลงใน Google Drive ส่วนตัวของคุณ</p>
+              {/* Password dot indicators */}
+              <div className="flex justify-center gap-4 py-2">
+                {[0, 1, 2, 3].map((idx) => (
+                  <div
+                    key={idx}
+                    className={`h-3 w-3 rounded-full transition-all duration-150 ${
+                      pin.length > idx 
+                        ? 'bg-indigo-500 scale-120 shadow-[0_0_8px_rgba(99,102,241,0.6)]' 
+                        : 'bg-slate-700'
+                    }`}
+                  />
+                ))}
               </div>
 
-              {/* Login Buttons */}
-              <button
-                onClick={handleLogin}
-                disabled={isLoggingIn}
-                className="w-full gsi-material-button py-2.5 rounded-xl flex items-center justify-center gap-2 font-bold text-xs bg-slate-900 text-white hover:bg-slate-800 shadow-md transition-all cursor-pointer"
-                id="gsi-login-btn"
-              >
-                {isLoggingIn ? (
-                  <>
-                    <RefreshCw className="h-4.5 w-4.5 animate-spin" />
-                    <span>กำลังเชื่อมต่อบัญชี Google...</span>
-                  </>
-                ) : (
-                  <>
-                    <LogIn className="h-4.5 w-4.5" />
-                    <span>เข้าสู่ระบบด้วยบัญชี Google เพื่อใช้งาน</span>
-                  </>
-                )}
-              </button>
+              {/* Pin Error feedback text */}
+              {pinError && (
+                <p className="text-[10px] text-rose-400 font-semibold animate-bounce">
+                  {pinError}
+                </p>
+              )}
 
-              {/* Footer info references */}
-              <p className="text-[10px] text-slate-400">
-                การล็อกอินเป็นสัญญาสวนทางสิทธิ์ตรง ตัวแอปไม่มีการดึงรหัสผ่านหรือเก็บข้อมูลของคุณภายนอก
-              </p>
+              {/* Loading Status Indicator */}
+              {isLoggingIn ? (
+                <div className="flex items-center justify-center gap-2 text-indigo-400 text-xs font-semibold py-1">
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  <span>กำลังเชื่อมโยงบัญชีและจัดดึง Google Sheets...</span>
+                </div>
+              ) : (
+                <div className="text-[10px] text-slate-500 font-medium">
+                  {pin.length === 4 ? 'กำลังตรวจสอบ...' : 'สัมผัสที่ปุ่มตัวเลข หรือพิมพ์รหัสผ่านผ่านแป้นคีย์บอร์ด'}
+                </div>
+              )}
+
+              {/* Digital Pin Number Pad Grid */}
+              <div className="grid grid-cols-3 gap-3 max-w-[240px] mx-auto pb-2">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                  <button
+                    key={num}
+                    onClick={() => handlePinDigit(String(num))}
+                    disabled={isLoggingIn}
+                    className="h-12 w-12 rounded-full border border-slate-800 bg-slate-900/40 text-slate-200 font-bold text-sm tracking-widest hover:bg-slate-850 hover:text-white transition active:scale-90 cursor-pointer flex items-center justify-center mx-auto"
+                  >
+                    {num}
+                  </button>
+                ))}
+                
+                {/* Clean Input Button */}
+                <button
+                  onClick={() => setPin('')}
+                  disabled={isLoggingIn}
+                  className="h-12 w-12 rounded-full border border-transparent text-slate-500 font-bold text-[10px] hover:text-slate-300 transition active:scale-95 cursor-pointer flex items-center justify-center mx-auto"
+                  title="ล้างใหม่"
+                >
+                  ล้างรหัส
+                </button>
+
+                {/* 0 */}
+                <button
+                  onClick={() => handlePinDigit('0')}
+                  disabled={isLoggingIn}
+                  className="h-12 w-12 rounded-full border border-slate-800 bg-slate-900/40 text-slate-200 font-bold text-sm hover:bg-slate-850 hover:text-white transition active:scale-90 cursor-pointer flex items-center justify-center mx-auto"
+                >
+                  0
+                </button>
+
+                {/* Backspace Icon */}
+                <button
+                  onClick={handlePinBackspace}
+                  disabled={isLoggingIn}
+                  className="h-12 w-12 rounded-full border border-transparent text-slate-500 hover:text-slate-300 transition active:scale-95 cursor-pointer flex items-center justify-center mx-auto"
+                  title="ลบตัวหลังสุด"
+                >
+                  <Delete className="h-4.5 w-4.5" />
+                </button>
+              </div>
+
+              {/* Bottom storage confidentiality tip */}
+              <div className="text-[9px] text-slate-600">
+                ระบบจัดการแบบแชร์คีย์ส่วนบุคคล สำรองไฟล์อย่างปลอดภัยลงชีทของท่านโดยตรง
+              </div>
             </div>
           </motion.div>
         </div>

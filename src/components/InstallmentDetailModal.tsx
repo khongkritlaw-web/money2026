@@ -28,8 +28,13 @@ export default function InstallmentDetailModal({
 }: InstallmentDetailModalProps) {
   if (!installment) return null;
 
+  const isCreditCard = category.title.toLowerCase().includes('บัตร') || 
+                       category.title.toLowerCase().includes('เครดิต') || 
+                       category.title.toLowerCase().includes('credit') ||
+                       category.installments.length === 1;
+
   const handleClear = async () => {
-    if (window.confirm(`คุณต้องการยกเลิกการชำระเงินของ งวดที่ ${installment.index} ใช่หรือไม่? ประวัติการชำระและข้อมูลใบเสร็จจะถูกลบออกจากชีท`)) {
+    if (window.confirm(`คุณต้องการยกเลิกการชำระเงินของ ${isCreditCard ? 'รอบบิลที่' : 'งวดที่'} ${installment.index} ใช่หรือไม่? ประวัติการชำระและข้อมูลใบเสร็จจะถูกลบออกจากชีท`)) {
       await onClearPayment(installment);
       onClose();
     }
@@ -67,10 +72,10 @@ export default function InstallmentDetailModal({
             <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 shrink-0 px-6 py-4">
               <div className="space-y-0.5">
                 <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  รายละเอียดงวดชำระเงิน
+                  {isCreditCard ? 'รายละเอียดรอบบิลบัตรเครดิต' : 'รายละเอียดงวดชำระเงิน'}
                 </span>
                 <h3 className="text-base font-bold text-slate-800 mt-1">
-                  งวดที่ {installment.index} (เดือน {installment.month})
+                  {isCreditCard ? `รอบบิลที่ ${installment.index}` : `งวดที่ ${installment.index}`} (เดือน {installment.month})
                 </h3>
               </div>
               <button
@@ -156,7 +161,9 @@ export default function InstallmentDetailModal({
 
               {/* Status Header */}
               <div className="flex items-center gap-3 py-1 text-xs">
-                <span className="text-slate-400 font-semibold shrink-0">สถานะงวดนี้:</span>
+                <span className="text-slate-400 font-semibold shrink-0">
+                  {isCreditCard ? 'สถานะรอบบิลนี้:' : 'สถานะงวดนี้:'}
+                </span>
                 <div>
                   {installment.status === 'PAID' ? (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-150 px-3 py-1 font-bold text-emerald-700">
@@ -184,7 +191,7 @@ export default function InstallmentDetailModal({
                   <span>บันทึกความเห็น / หมายเหตุ</span>
                 </label>
                 <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3 text-slate-600 font-semibold min-h-[50px] leading-relaxed">
-                  {installment.notes || 'ไม่มีหมายเหตุแนบท้ายสำหรับงวดประวัติจัดส่งนี้'}
+                  {installment.notes || (isCreditCard ? 'ไม่มีหมายเหตุแนบท้ายสำหรับรอบบิลนี้' : 'ไม่มีหมายเหตุแนบท้ายสำหรับงวดผ่อนชำระนี้')}
                 </div>
               </div>
 
@@ -222,7 +229,9 @@ export default function InstallmentDetailModal({
                 ) : (
                   <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center bg-slate-50/50">
                     <ImageIcon className="mx-auto h-8 w-8 text-slate-300 mb-2" />
-                    <p className="text-[11px] text-slate-400 font-semibold">ยังไม่มีการแนบไฟล์รูปภาพสลิปใบเสร็จในงวดค้างชำระนี้</p>
+                    <p className="text-[11px] text-slate-400 font-semibold">
+                      {isCreditCard ? 'ยังไม่มีการแนบไฟล์หลักฐานสลิปใบเสร็จในรอบบิลนี้' : 'ยังไม่มีการแนบไฟล์รูปภาพสลิปใบเสร็จในงวดค้างชำระนี้'}
+                    </p>
                   </div>
                 )}
               </div>
