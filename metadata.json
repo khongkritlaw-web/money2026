@@ -1,0 +1,6 @@
+{
+  "name": "Monthly Expense Tracker",
+  "description": "เว็บแอปสำหรับติดตามค่าใช้จ่ายประจำเดือน ตรวจสอบสถานะการชำระเงินค่างวด แนบรูปใบเสร็จ และบันทึกข้อมูลซิงก์กับ Google Sheets",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
