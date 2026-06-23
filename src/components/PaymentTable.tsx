@@ -169,7 +169,7 @@ export default function PaymentTable({
                 <th className="py-3 px-4 w-16 text-center">{isCreditCard ? 'รอบบิลที่' : 'งวดที่'}</th>
                 <th className="py-3 px-4">{isCreditCard ? 'รอบประจำเดือน' : 'เดือนค่างวด'}</th>
                 <th className="py-3 px-4 text-right">{isCreditCard ? 'ยอดรูดบัตร (บาท)' : 'ยอดค่างวด'}</th>
-                <th className="py-3 px-4 text-right">ชำระมาแล้ว</th>
+                <th className="py-3 px-4 text-right bg-amber-50/70 border-x border-amber-100/40 text-amber-800 font-bold">ชำระมาแล้ว (เน้นเหลือง)</th>
                 <th className="py-3 px-4 text-right">คงเหลือ</th>
                 <th className="py-3 px-4 text-center">ใบเสร็จ</th>
                 <th className="py-3 px-4">ความเห็น/โน้ต</th>
@@ -247,9 +247,9 @@ export default function PaymentTable({
                     </td>
 
                     {/* Paid Amount */}
-                    <td className="py-3.5 px-4 text-right">
+                    <td className="py-3.5 px-4 text-right bg-amber-50/20 border-x border-amber-100/10">
                       {item.paidAmount !== null ? (
-                        <span className="font-bold text-emerald-600">
+                        <span className="font-bold text-amber-750 bg-amber-100/30 px-2 py-0.5 rounded">
                           {item.paidAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </span>
                       ) : (

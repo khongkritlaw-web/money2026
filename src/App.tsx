@@ -17,6 +17,7 @@ export default function App() {
   const [token, setToken] = useState<string | null>(null);
   const [needsAuth, setNeedsAuth] = useState<boolean>(true);
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+  const [isAuthExpired, setIsAuthExpired] = useState<boolean>(false);
 
   // PIN Lock States
   const [pin, setPin] = useState<string>('');
@@ -128,10 +129,20 @@ export default function App() {
         setActiveCategoryIdx(0);
       }
       setSheetData(parsedData);
+      setIsAuthExpired(false);
       showToast('เชื่อมต่อข้อมูล Google Sheets ล่าสุดสำเร็จ', 'success');
     } catch (err: any) {
       console.error(err);
-      showToast(`ไม่พบชีทหรือเชื่อมต่อล้มเหลวจริง: ${err.message || 'กรุณาตรวจสอบสิทธิ์เข้าถึง'}`, 'error');
+      const errMsg = String(err.message || '').toLowerCase();
+      const isAuthErr = errMsg.includes('401') || errMsg.includes('unauthorized') || errMsg.includes('expired') || errMsg.includes('credential') || err.status === 401;
+      
+      if (isAuthErr) {
+        setIsAuthExpired(true);
+        setNeedsAuth(true);
+        showToast('สิทธิ์การเชื่อมโยง Google API สิ้นสุดอายุการเชื่อมต่อชั่วคราว', 'error');
+      } else {
+        showToast(`ไม่พบชีทหรือเชื่อมต่อล้มเหลวจริง: ${err.message || 'กรุณาตรวจสอบสิทธิ์เข้าถึง'}`, 'error');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -145,6 +156,7 @@ export default function App() {
         setToken(result.accessToken);
         setUser(result.user);
         setNeedsAuth(false);
+        setIsAuthExpired(false);
         showToast(`ยินดีต้อนรับคุณ ${result.user.displayName}`, 'success');
       }
     } catch (err: any) {
@@ -210,7 +222,8 @@ export default function App() {
         activeInstallment,
         paidAmount,
         receiptUrl,
-        notes
+        notes,
+        activeCategory.metadata
       );
 
       showToast(`บันทึกชำระเงินงวดที่ ${activeInstallment.index} เรียบร้อยแล้ว`, 'success');
@@ -241,7 +254,8 @@ export default function App() {
         spreadsheetId,
         activeCategory.title,
         installment.rowIndex,
-        installment.dueAmount
+        installment.dueAmount,
+        activeCategory.metadata
       );
       showToast(`ยกเลิกประวัติการชำระเงินของ งวดที่ ${installment.index} แล้ว`, 'success');
       await loadData();
@@ -278,7 +292,8 @@ export default function App() {
         targetRowIndex,
         installmentNum,
         monthStr,
-        dueAmount
+        dueAmount,
+        activeCategory.metadata
       );
 
       showToast(`เพิ่มขยายงวดใหม่ (${monthStr}) ลงช่องใน Google Sheet สำเร็จ`, 'success');
@@ -575,20 +590,59 @@ export default function App() {
                 userPhoto={user?.photoURL}
                 isProcessing={isProcessing}
               />
+            ) : isAuthExpired ? (
+              /* Auth expired friendly reconnect state */
+              <div className="min-h-[50vh] flex flex-col items-center justify-center text-center p-8 border border-amber-200 border-dashed rounded-[2rem] bg-amber-50/20 max-w-lg mx-auto relative overflow-hidden animate-fade-in" id="expired-reconnect-container">
+                <div className="absolute top-0 right-0 -mr-16 -mt-16 h-36 w-36 rounded-full bg-amber-100/30 blur-xl" />
+                <div className="inline-flex rounded-2xl bg-amber-100 text-amber-700 p-4 mb-4">
+                  <KeySquare className="h-6 w-6" />
+                </div>
+                <h4 className="font-bold text-slate-800 text-sm">สิทธิ์ดึงข้อมูล Google Sheet หมดอายุชั่วคราว (เมื่อเกิน 1 ชม.)</h4>
+                <p className="text-[11px] text-slate-500 mt-3 max-w-xs leading-relaxed">
+                  ตามมาตรฐานความปลอดภัยระดับโลกของ Google สิทธิ์การขอเข้าถึง Google API จะสามารถคงอยู่ได้นานสูงสุด <strong>1 ชั่วโมง (3600 วินาที)</strong> หลังจากนั้นกุญแจจะระงับการเข้าถึงชั่วคราวเพื่อป้องกันไฟล์ของคุณ
+                  <br /><br />
+                  คุณไม่จําเป็นต้องล็อกเอาท์หรือล็อก PIN ใหม่ให้ยุ่งยาก เพียงแค่ป้อนล็อกอินกูเกิ้ล 1 คลิก ระบบจะจัดการเปิดกุญแจดึงชีทกลับมาได้ทันที!
+                </p>
+                <button
+                  onClick={handleLogin}
+                  disabled={isLoggingIn}
+                  className="mt-6 px-5 py-2.5 text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-150 border border-amber-200 rounded-xl shadow-xs transition active:scale-95 flex items-center gap-2 cursor-pointer"
+                >
+                  {isLoggingIn ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      <span>กำลังซิงก์กุญแจใหม่...</span>
+                    </>
+                  ) : (
+                    <>
+                      <LogIn className="h-4 w-4 text-amber-800" />
+                      <span>ต่ออายุสิทธิ์ความปลอดภัย Google (1 คลิก)</span>
+                    </>
+                  )}
+                </button>
+              </div>
             ) : (
               /* Missing data blank screen state */
               <div className="min-h-[50vh] flex flex-col items-center justify-center text-center p-8 border border-dashed border-slate-200 rounded-3xl bg-white max-w-lg mx-auto">
                 <FileSpreadsheet className="h-12 w-12 text-slate-300 mb-4" />
                 <h4 className="font-bold text-slate-800 text-sm">ไม่พบบันทึกแผ่นงานใดๆ</h4>
                 <p className="text-xs text-slate-500 mt-2 max-w-xs leading-relaxed">
-                  ไม่สามรรถดึงข้อมูลชีท {spreadsheetId} ได้สำเร็จ ตรวจสอบสิทธิ์บัญชี หรือสลับ ID ไปยัง Spreadsheet ที่คุณมีสิทธิ์เขียนในไอคอนตั้งค่าขวาบน
+                  ไม่สามารถดึงข้อมูลแผ่นงาน {spreadsheetId} ได้สำเร็จ ตรวจสอบสิทธิ์บัญชี หรือสลับ ID ไปยัง Spreadsheet ในแถบฟันเฟืองด้านบน
                 </p>
-                <button
-                  onClick={loadData}
-                  className="mt-5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-xl shadow-xs"
-                >
-                  ลองดึงข้อมูลอีกครั้ง
-                </button>
+                <div className="flex gap-2.5 mt-5">
+                  <button
+                    onClick={loadData}
+                    className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-xl shadow-xs"
+                  >
+                    ลองดึงข้อมูลอีกครั้ง
+                  </button>
+                  <button
+                    onClick={handleLogin}
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl"
+                  >
+                    เชื่อมสิทธิ์ Google ใหม่
+                  </button>
+                </div>
               </div>
             )}
           </main>

@@ -16,6 +16,13 @@ export interface SheetCategory {
     dueDateInfo?: string; // Col C Row 1 e.g. "ทุกวันที่ 1"
     ref1?: string;        // Col D Row 1 e.g. "umar+"
     ref2?: string;        // Col E Row 1 e.g. "ต้อ"
+    colPaidLetter?: string;
+    colRemainLetter?: string;
+    colReceiptLetter?: string;
+    colNoteLetter?: string;
+    colIndexLetter?: string;
+    colMonthLetter?: string;
+    colDueLetter?: string;
   };
   installments: InstallmentRow[];
   totalExpected: number;

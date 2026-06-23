@@ -71,6 +71,17 @@ export function parseCurrency(val: any): number {
   return isNaN(parsed) ? 0 : parsed;
 }
 
+// Convert numbers to column letters e.g. 0 -> A, 1 -> B, 2 -> C
+export function getColumnLetter(colIndex: number): string {
+  let temp = colIndex;
+  let letter = '';
+  while (temp >= 0) {
+    letter = String.fromCharCode((temp % 26) + 65) + letter;
+    temp = Math.floor(temp / 26) - 1;
+  }
+  return letter;
+}
+
 // Fetch spreadsheet details including tabs list and values
 export async function fetchSpreadsheetData(accessToken: string, spreadsheetId: string): Promise<SpreadsheetData> {
   try {
@@ -149,6 +160,12 @@ export async function fetchSpreadsheetData(accessToken: string, spreadsheetId: s
       let headerRowIdx = -1;
       for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
+        if (!r) continue;
+        const rowStr = r.join(' ');
+        if (rowStr.includes('เดือน') && (rowStr.includes('ยอด') || rowStr.includes('งวด') || rowStr.includes('ชำระ') || rowStr.includes('คงเหลือ'))) {
+          headerRowIdx = i;
+          break;
+        }
         if (r.indexOf('งวด') !== -1 || (r[1] && r[1].trim() === 'งวด')) {
           headerRowIdx = i;
           break;
@@ -161,6 +178,49 @@ export async function fetchSpreadsheetData(accessToken: string, spreadsheetId: s
         continue;
       }
 
+      // Dynamic header mapping to support shifted columns (e.g., extra transaction details in credit card tab)
+      let colIndex = 1;      // Fallback B
+      let colMonth = 2;      // Fallback C
+      let colDue = 3;        // Fallback D
+      let colPaid = 4;       // Fallback E
+      let colRemain = 5;     // Fallback F
+      let colReceipt = 6;    // Fallback G
+      let colNote = 7;       // Fallback H
+
+      const headers = rows[headerRowIdx];
+      for (let j = 0; j < headers.length; j++) {
+        const h = String(headers[j] || '').trim().toLowerCase();
+        if (!h) continue;
+
+        if (h.includes('คงเหลือ') || h === 'เหลือ' || h.includes('ยอดเหลือ') || h.includes('ยังขาด')) {
+          colRemain = j;
+        } else if (h.includes('ชำระมา') || h === 'ชำระ' || h === 'จ่าย' || h.includes('ยอดชำระ') || h.includes('จ่ายแล้ว') || h.includes('ชำระเงิน')) {
+          colPaid = j;
+        } else if (h.includes('งวด') || h.includes('รอบบิลที่') || h.includes('ครั้งที่') || h === 'ที่' || h === 'ลำดับ' || h === 'no' || h === 'no.') {
+          if (!h.includes('ยอด') && !h.includes('เดือน') && !h.includes('ชำระ') && !h.includes('โอน')) {
+            colIndex = j;
+          }
+        } else if (h.includes('เดือน') || h.includes('รอบประจำ') || h.includes('รอบเดือน') || h.includes('ประจำเดือน')) {
+          colMonth = j;
+        } else if (h.includes('ใบเสร็จ') || h.includes('สลิป') || h.includes('หลักฐาน') || h.includes('รูป') || h.includes('receipt') || h.includes('slip') || h.includes('ไฟล์')) {
+          colReceipt = j;
+        } else if (h.includes('หมายเหตุ') || h.includes('notes') || h.includes('รายละเอียด') || h.includes('memo')) {
+          colNote = j;
+        } else if (h.includes('ยอด') || h.includes('ราคา') || h.includes('ค่า') || h.includes('วงเงิน') || h.includes('จำนวนเงิน') || h.includes('เงินต้น')) {
+          if (!h.includes('ชำระ') && !h.includes('คงเหลือ') && !h.includes('จ่าย') && !h.includes('เดือน')) {
+            colDue = j;
+          }
+        }
+      }
+
+      const colPaidLetter = getColumnLetter(colPaid);
+      const colRemainLetter = getColumnLetter(colRemain);
+      const colReceiptLetter = getColumnLetter(colReceipt);
+      const colNoteLetter = getColumnLetter(colNote);
+      const colIndexLetter = getColumnLetter(colIndex);
+      const colMonthLetter = getColumnLetter(colMonth);
+      const colDueLetter = getColumnLetter(colDue);
+
       const installments: InstallmentRow[] = [];
       const now = new Date();
       // Set current date's day to 1 for precise month-level comparisons
@@ -169,28 +229,39 @@ export async function fetchSpreadsheetData(accessToken: string, spreadsheetId: s
       // Read entries from header row index + 1 down to the sum/total lines
       for (let i = headerRowIdx + 1; i < rows.length; i++) {
         const row = rows[i];
-        // Stop if we hit "รวม" or "คงเหลือ"
-        const cellB = row[1] ? row[1].trim() : '';
-        const cellC = row[2] ? row[2].trim() : '';
+        if (!row) continue;
 
-        if (cellC.includes('รวม') || cellC.includes('คงเหลือ') || cellB.includes('รวม') || cellB.includes('คงเหลือ')) {
+        const cellIndexText = row[colIndex] ? String(row[colIndex]).trim() : '';
+        const cellMonthText = row[colMonth] ? String(row[colMonth]).trim() : '';
+
+        // Stop if we hit sum totals
+        if (
+          cellIndexText.includes('รวม') || cellIndexText.includes('คงเหลือ') ||
+          cellMonthText.includes('รวม') || cellMonthText.includes('คงเหลือ') ||
+          row.some(cell => {
+            const txt = String(cell || '').trim();
+            return txt === 'รวม' || txt === 'ยอดรวม' || txt === 'คงเหลือ' || txt.startsWith('รวมเงิน') || txt.startsWith('ยอดคงเหลือ');
+          })
+        ) {
           break;
         }
 
         // Must have at least a Month value to render
-        if (!cellC) continue;
+        if (!cellMonthText) continue;
 
-        const indexVal = cellB || String(installments.length + 1);
-        const monthVal = cellC;
-        const dueVal = parseCurrency(row[3]);
-        const paidVal = row[4] !== undefined && row[4] !== '' ? parseCurrency(row[4]) : null;
-        const remainVal = row[5] !== undefined ? parseCurrency(row[5]) : (dueVal - (paidVal || 0));
-        const receiptVal = row[6] || '';
-        const noteVal = row[7] || '';
+        const indexVal = cellIndexText || String(installments.length + 1);
+        const monthVal = cellMonthText;
+        const dueVal = parseCurrency(row[colDue]);
+        const paidVal = row[colPaid] !== undefined && row[colPaid] !== '' ? parseCurrency(row[colPaid]) : null;
+        const remainVal = row[colRemain] !== undefined && row[colRemain] !== '' ? parseCurrency(row[colRemain]) : (dueVal - (paidVal || 0));
+        const receiptVal = row[colReceipt] || '';
+        const noteVal = row[colNote] || '';
 
         // Determine payment status
         let status: 'PAID' | 'UNPAID' | 'OVERDUE' = 'UNPAID';
-        if (paidVal !== null && paidVal >= dueVal) {
+        if (paidVal !== null && paidVal >= dueVal && dueVal > 0) {
+          status = 'PAID';
+        } else if (remainVal <= 0 && dueVal > 0) {
           status = 'PAID';
         } else {
           // Check if installment month has already passed
@@ -223,7 +294,14 @@ export async function fetchSpreadsheetData(accessToken: string, spreadsheetId: s
         metadata: {
           dueDateInfo,
           ref1,
-          ref2
+          ref2,
+          colPaidLetter,
+          colRemainLetter,
+          colReceiptLetter,
+          colNoteLetter,
+          colIndexLetter,
+          colMonthLetter,
+          colDueLetter
         },
         installments,
         totalExpected,
@@ -251,31 +329,49 @@ export async function savePayment(
   installment: InstallmentRow,
   paidAmount: number,
   receiptUrl: string,
-  notes: string
+  notes: string,
+  metadata?: {
+    colPaidLetter?: string;
+    colRemainLetter?: string;
+    colReceiptLetter?: string;
+    colNoteLetter?: string;
+  }
 ): Promise<boolean> {
   try {
     const rowIdx = installment.rowIndex;
     // Calculate remaining amount based on installment logic
     const computedRemaining = Math.max(0, installment.dueAmount - paidAmount);
 
-    // Range for Column E to Column H (E: ชำระมา, F: คงเหลือ, G: ใบเสร็จ, H: หมายเหตุ)
-    // Range includes sheet tab name
-    const range = `'${tabName}'!E${rowIdx}:H${rowIdx}`;
+    const colPaid = metadata?.colPaidLetter || 'E';
+    const colRemain = metadata?.colRemainLetter || 'F';
+    const colReceipt = metadata?.colReceiptLetter || 'G';
+    const colNote = metadata?.colNoteLetter || 'H';
 
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`;
     const body = {
-      values: [
-        [
-          paidAmount,
-          computedRemaining,
-          receiptUrl,
-          notes
-        ]
+      valueInputOption: 'USER_ENTERED',
+      data: [
+        {
+          range: `'${tabName}'!${colPaid}${rowIdx}`,
+          values: [[paidAmount]]
+        },
+        {
+          range: `'${tabName}'!${colRemain}${rowIdx}`,
+          values: [[computedRemaining]]
+        },
+        {
+          range: `'${tabName}'!${colReceipt}${rowIdx}`,
+          values: [[receiptUrl]]
+        },
+        {
+          range: `'${tabName}'!${colNote}${rowIdx}`,
+          values: [[notes]]
+        }
       ]
     };
 
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
     const res = await fetch(url, {
-      method: 'PUT',
+      method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
@@ -300,24 +396,45 @@ export async function clearPayment(
   spreadsheetId: string,
   tabName: string,
   rowIndex: number,
-  dueAmount: number
+  dueAmount: number,
+  metadata?: {
+    colPaidLetter?: string;
+    colRemainLetter?: string;
+    colReceiptLetter?: string;
+    colNoteLetter?: string;
+  }
 ): Promise<boolean> {
   try {
-    const range = `'${tabName}'!E${rowIndex}:H${rowIndex}`;
+    const colPaid = metadata?.colPaidLetter || 'E';
+    const colRemain = metadata?.colRemainLetter || 'F';
+    const colReceipt = metadata?.colReceiptLetter || 'G';
+    const colNote = metadata?.colNoteLetter || 'H';
+
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`;
     const body = {
-      values: [
-        [
-          '', // ชำระมา
-          dueAmount, // คงเหลือ back to due amount
-          '', // ใบเสร็จ
-          ''  // หมายเหตุ
-        ]
+      valueInputOption: 'USER_ENTERED',
+      data: [
+        {
+          range: `'${tabName}'!${colPaid}${rowIndex}`,
+          values: [['']]
+        },
+        {
+          range: `'${tabName}'!${colRemain}${rowIndex}`,
+          values: [[dueAmount]]
+        },
+        {
+          range: `'${tabName}'!${colReceipt}${rowIndex}`,
+          values: [['']]
+        },
+        {
+          range: `'${tabName}'!${colNote}${rowIndex}`,
+          values: [['']]
+        }
       ]
     };
 
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
     const res = await fetch(url, {
-      method: 'PUT',
+      method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
@@ -344,7 +461,16 @@ export async function appendInstallmentRow(
   targetRowIndex: number, // index where "รวม" row starts, we insert BEFORE this
   installmentNumber: string,
   installmentMonth: string,
-  dueAmount: number
+  dueAmount: number,
+  metadata?: {
+    colIndexLetter?: string;
+    colMonthLetter?: string;
+    colDueLetter?: string;
+    colPaidLetter?: string;
+    colRemainLetter?: string;
+    colReceiptLetter?: string;
+    colNoteLetter?: string;
+  }
 ): Promise<boolean> {
   try {
     // 1. Get the Sheet ID representing the active tab to make sheetId-specific batch requests
@@ -353,8 +479,8 @@ export async function appendInstallmentRow(
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (!metaRes.ok) throw new Error('Failed to find sheet tab Id');
-    const metadata = await metaRes.json();
-    const sheetObj = metadata.sheets.find((s: any) => s.properties.title === tabName);
+    const metadataObj = await metaRes.json();
+    const sheetObj = metadataObj.sheets.find((s: any) => s.properties.title === tabName);
     if (!sheetObj) throw new Error('Sheet category tab not found');
     const sheetId = sheetObj.properties.sheetId;
 
@@ -390,25 +516,52 @@ export async function appendInstallmentRow(
       throw new Error(`Failed to insert dimension: ${err}`);
     }
 
-    // 3. Write data values into Column B to H of the newly inserted row
-    const writeRange = `'${tabName}'!B${targetRowIndex}:H${targetRowIndex}`;
+    // 3. Write data values into dynamic columns of the newly inserted row
+    const colIndex = metadata?.colIndexLetter || 'B';
+    const colMonth = metadata?.colMonthLetter || 'C';
+    const colDue = metadata?.colDueLetter || 'D';
+    const colPaid = metadata?.colPaidLetter || 'E';
+    const colRemain = metadata?.colRemainLetter || 'F';
+    const colReceipt = metadata?.colReceiptLetter || 'G';
+    const colNote = metadata?.colNoteLetter || 'H';
+
+    const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`;
     const writeBody = {
-      values: [
-        [
-          installmentNumber,     // Col B: งวด
-          installmentMonth,      // Col C: เดือน
-          dueAmount,             // Col D: ค่างวด
-          '',                    // Col E: ชำระมา (empty)
-          dueAmount,             // Col F: คงเหลือ (static remaining starts as due)
-          '',                    // Col G: ใบเสร็จ (empty)
-          ''                     // Col H: หมายเหตุ (empty)
-        ]
+      valueInputOption: 'USER_ENTERED',
+      data: [
+        {
+          range: `'${tabName}'!${colIndex}${targetRowIndex}`,
+          values: [[installmentNumber]]
+        },
+        {
+          range: `'${tabName}'!${colMonth}${targetRowIndex}`,
+          values: [[installmentMonth]]
+        },
+        {
+          range: `'${tabName}'!${colDue}${targetRowIndex}`,
+          values: [[dueAmount]]
+        },
+        {
+          range: `'${tabName}'!${colPaid}${targetRowIndex}`,
+          values: [['']]
+        },
+        {
+          range: `'${tabName}'!${colRemain}${targetRowIndex}`,
+          values: [[dueAmount]]
+        },
+        {
+          range: `'${tabName}'!${colReceipt}${targetRowIndex}`,
+          values: [['']]
+        },
+        {
+          range: `'${tabName}'!${colNote}${targetRowIndex}`,
+          values: [['']]
+        }
       ]
     };
 
-    const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(writeRange)}?valueInputOption=USER_ENTERED`;
     const writeRes = await fetch(writeUrl, {
-      method: 'PUT',
+      method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
